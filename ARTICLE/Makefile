@@ -1,10 +1,12 @@
 # Installed publishers and science from texlive to get algorithmic.sty
-# IEEEtran.cls
+# and IEEEtran.cls
+
 FIGURES = DR_gp ICY meantime dag density_param_tau_pi trajectory_tau_pi_sum
 PDFFIGS = $(addsuffix .pdf, ${FIGURES})
 
-TARGET = bayesianbaselineestimation2
+TARGET = bayesianbaselineestimation
 ${TARGET}.pdf : ${TARGET}.tex ${PDFFIGS}
+	pdflatex ${TARGET}
 
 ## variables     : Print selected variables.
 .PHONY : variables
