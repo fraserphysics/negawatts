@@ -28,11 +28,23 @@
   citecolor=blue,
   linkcolor=blue,
   urlcolor==blue]
-           {hyperref}
+  {hyperref}
 
-\usepackage{soul}
+  \usepackage{soul}
+  %
+\newcommand{\normal}[2]{{\mathcal{N}} \left(#1,#2 \right)}
+\newcommand{\prob}{\mathcal{P}}
 \newcommand{\eventset}{\mathcal{T}}
-\newcommand{\context}{\bar {\mathcal{T}}}
+\newcommand{\wvector}{\mathbf w}
+\newcommand{\context}{{\bar {\mathcal{T}}}}
+\newcommand{\drpower}{Q}
+\newcommand{\sumdrpower}{{\mathcal{Q}}}
+\newcommand{\referencepower}{R}
+\newcommand{\indr}{\drpower_\eventset}
+\newcommand{\outdr}{\drpower_\context}
+\newcommand{\inreference}{\referencepower_\eventset}
+\newcommand{\outreference}{\referencepower_\context}
+\newcommand{\thetasans}[1]{\theta^{\left\{-#1\right\}}}
 
 \begin{document}
 
@@ -55,10 +67,12 @@
 \begin{abstract}
   We describe a Bayesian characterization of the \emph{baseline} for
   \emph{demand response} policy, ie, what the total load a utility
-  would have seen without shedding or controlling any load during an
-  interval when some of the load was selectively shed.  The Bayesian a
-  posteriori distribution quantifies \emph{uncertainty} in the
-  characterization.  The procedure iteratively estimates a model.
+  would have seen without shedding or curtailing any load during an
+  interval when some of the load was selectively curtailed.  A
+  Bayesian a posteriori distribution quantifies \emph{uncertainty} in
+  the characterization.  The procedure uses an iterative Gibbs
+  sampling scheme rather than integrating the a posteriori
+  distribution of unobserved nuisance parameters.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -71,7 +85,7 @@ Control group, Baseline estimation, Gibbs sampler, EM algorithm
 \section{Introduction}
 \label{sec:intro}
 
-\IEEEPARstart{T}raditionally electric utilities have addressed the
+\IEEEPARstart{T}{raditionally} electric utilities have addressed the
 primary challenge of balancing the power generated with the power used
 by adjusting generation.  The approach requires maintaining
 \emph{reserves} (spinning reserve, ready reserve, etc.) that are
@@ -81,85 +95,194 @@ possibility of the less expensive practice of managing loads in real
 time.  While \emph{time of use pricing} would be ideal if customers
 were really constantly optimizing the objective functions of
 theoretical economics, some have argued\cite{meyn} that actual
-customers focus more on things like being able to take a warm shower
+customers focus more on things like being able to take a hot shower
 when it's convenient.  Thus, we are interested in \emph{demand
-  response} techniques for selectively shedding loads like HVAC
-systems and water heaters.  Our goals are to: (1) Forecast how much
-power will be saved by shedding loads participating in a DR program,
-and in order to compensate participants, (2) Estimate in retrospect
-how much power participants would have used.  The amount of power that
-would have been used if generation were unconstrained and the load
-were unmanaged is called the \emph{baseline}.  Estimating the baseline
-consumption is thus a major goal for all operators in the electricity
-market. We refer the interested reader to the review of current
-methods in \cite{directestimation}
+  response} techniques for selectively curtailing loads like HVAC
+systems and water heaters.  Here we present a technique for estimating
+in retrospect how much power participants would have used had the DR
+program not been deployed.  That amount of power is called the
+\emph{baseline}, and an estimate of it could be used to establish
+compensation for participating customers.  We refer the interested
+reader to the review of current methods in \cite{directestimation}.
 
-On the following, we will focus on residential consumption and we aim
-at estimate the sum of baseline consumption of $N$ residential load
-curve submitted to a DR policy. Our baseline estimation method rely on
-the existence of representative residential portfolio database with
-individual load curves and characteristics. The existence of such
-database are ensured by technological improvement such as smart
-meters. Our method aims at selecting individuals from the data-mart
-using a Bayesian framework in order to make a control group with a
-consumption close to the DR group when DR policy are not active.  Our
-methodology does not require a long history to estimate the baseline
-and allow to estimate the baseline and could give confidence intervals
-associated to the estimation.
+Here, we focus on residential consumption and provide an estimator for
+the sum of baseline consumption of the \emph{DR group}, a set of $N$
+customers who participate in a DR program.  Our baseline estimation
+method requires a database of loads as a function of time for both a
+set of customers (the reference group) who do not participate in the
+DR program and the set of customers who do participate.  With the
+deployment of smart meters, such databases are becoming available.
+For the present work we use data from the Los Alamos Department of
+Public Utilities that they collected using smart meters provided by a
+NEDO project\cite{nedo}.  We have readings from 1646 meters of the
+electric energy used in every 15 minute interval from November 2013
+through December 2018.  Our approach randomly assigns customers from
+the reference group in the database to a \emph{control set} whose
+behavior is similar to the DR group when the DR policy is not active.
+Membership in the control group is determined by a vector of indicator
+variables with a distribution we calculate in a Bayesian manner.  The
+Bayesian a posteriori distribution quantitatively characterizes the
+uncertainty in the baseline estimate.
 
-In section \ref{sec:new} we expose
-in details our new methods and apply it to Los Alamos data.
-
-
-\section{Bayesian estimation}\label{sec:new}
+\section{Bayesian estimation}
+\label{sec:new}
 
 \subsection{Notation}
 \label{sec:notation}
+
+Rather than introduce notation piecemeal as we describe the model and
+procedure, we provide the following list:
 \begin{description}
 \item[$N$] Number of customers in DR program
-\item[$Y(t)$] Sum of load curves in DR program
-\item[$P_j^{\text{DR}}$] The load curve of customer $j$ in the DR
-  program
-\item[$t\in \eventset$] An event (a sample time), $t$ in set of
-  events, $\eventset$.  Our goal is to characterize $\left\{ Y(t) : t
-    \in \eventset \right\}$ in terms of a Bayesian a posteriori
-  distribution where $\eventset$ is for example the time between 6 PM
-  and 8 PM on a particular day.
+\item[$t\in \eventset$] An event (a sample time), $t$, in a set of
+  events, $\eventset$.  The set $\eventset$ is the times that the DR
+  program is deployed.
+\item[$\left| \eventset \right|$] The number of sample times in an
+  event set
+\item[$\drpower_j(t)$] The load of customer $j$ in the DR program at
+  time $t$.  If $t\in \eventset$, $\drpower_j(t)$ is what the load
+  customer $j$ \emph{would have been} had the DR program not been
+  deployed.
+\item[$\sumdrpower(t)$] Sum of loads in DR program.  Our goal is to
+  characterize $\left\{ \sumdrpower(t) : t \in \eventset \right\}$ in
+  terms of a Bayesian a posteriori distribution where $\eventset$ is
+  for example the time between 6 PM and 8 PM on a particular day.
 \item[$\context$] A context set of events with $\context \cap
   \eventset = \emptyset$ used as data.
-\item[$M$] The number of customers from which we select a control
-  group to estimate the baseline
-\item[$\left\{ w_1, w_2, \ldots, w_M \right\}$] Indicator variables,
-  where
+\item[$M$] The number of reference customers from which we select a
+  control group to estimate the baseline
+\item[$\referencepower_j(t)$] The load of reference customer $j$ at
+  time $t$.
+\item[$\wvector$] The vector of $M$ indicator variables,
+  with
   \begin{equation*}
     w_j =
     \begin{cases}
-      1 & \text{customer } j \text{ is in the control group}\\
+      1 & \text{if customer } j \text{ is in the control group}\\
       0 & \text{otherwise}
     \end{cases}
   \end{equation*}
-  The values of the $\left\{ w_j \right\}_{j=1}^M$ are independent
-  random variables modeled as Bernoulli Ber($\pi$).  We use a Beta
-  distribution as a prior for $\pi$
-\item [$\alpha_\pi, \beta_\pi$] Hyperparameters, ie,
+\item[$\left| \wvector \right|$] The number of reference customers
+  included in the control set,
+  \begin{equation*}
+    \left| \wvector \right| = \sum_{j=1}^M w_j
+  \end{equation*}
+\item[$\pi$] The values of the $\left\{ w_j \right\}_{j=1}^M$ are
+  independent random variables modeled as Bernoulli Ber($\pi$).  We
+  use a Beta distribution as a prior for $\pi$.
+\item [$\alpha_\pi, \beta_\pi$] Hyperparameters of the prior for
+  $\pi$, ie,
   \begin{equation*}
     \pi \sim \text{Beta}(\alpha_\pi, \beta_\pi )
   \end{equation*}
-\item[$\mu(w_1, \ldots, w_M, t )$]  The mean of the Gaussian a
-  posteriori distribution
-\item[$\tau = \frac{1}{\sigma}$] The precision, where $\sigma^2$ is
+\item[$\mu$] The mean of the distribution for the baseload given
+  particular values of $\wvector$ and $\inreference$
+\item[$\tau = \frac{1}{\sigma^2}$] The precision, where $\sigma^2$ is
   the variance for each event $t$.
-\item[$\alpha, \beta$] Hyper-parameters of Gamma prior for $\tau$, ie,
+\item[$\alpha, \beta$] Hyper-parameters of the Gamma prior for $\tau$,
+  ie,
   \begin{equation*}
     \tau \sim \Gamma(\alpha, \beta)
   \end{equation*}
-
-
+\item[$\theta$] The entire set of unobserved random parameters
+  \begin{equation*}
+    \theta \equiv \left(\wvector, \pi, \tau \right)
+  \end{equation*}
+\item[$\thetasans{\gamma}$] The entire parameter vector $\theta$
+  except one component (the component $\gamma$ as written here).
 \end{description}
 
+\subsection{Independence Assumptions}
+\label{sec:Independence}
+
+We characterize the baseline in terms of probability with
+\begin{align*}
+  &\prob(\sumdrpower|\inreference, \outdr, \outreference) \\
+  &= \int \prob \left( \sumdrpower, \theta |\inreference, \outdr,
+    \outreference \right) d\theta \\
+  &= \int \prob \left( \sumdrpower | \theta, \inreference, \outdr,
+    \outreference \right) \prob \left( \theta| \inreference, \outdr,
+    \outreference \right) d\theta.
+\end{align*}
+Assuming
+\begin{itemize}
+\item $\sumdrpower$ is independent of $\outdr$ and $\outreference$ given
+  $\theta$ and $\inreference$
+\item $\theta$ is independent of $\inreference$ given $\outreference$
+  and $\outdr$,
+\end{itemize}
+we write
+\begin{equation}
+  \label{eq:probsumdrpower}
+  \prob(\sumdrpower|\inreference, \outdr, \outreference) = \int \prob \left(
+    \sumdrpower | \theta, \inreference \right) \prob \left( \theta| \outdr,
+    \outreference \right) d\theta.
+\end{equation}
+With the models described in Sect.~\ref{sec:models}, it would be
+difficult to integrate \eqref{eq:probsumdrpower}.  However, as we
+demonstrate, one can draw from
+$\prob(\sumdrpower|\inreference, \outdr, \outreference)$ using Gibbs
+sampling.
+
+\subsection{Models}
+\label{sec:models}
+
+Given $\theta$ and the reference data $\inreference$, we model the
+first term on the right hand side of \eqref{eq:probsumdrpower} as a
+Gaussian
+\begin{equation*}
+  \sumdrpower(t)|\theta, \inreference \sim \normal{\mu(\wvector,
+    \inreference,t)}{\sigma^2},
+\end{equation*}
+where
+\begin{equation*}
+  \mu(\wvector, \inreference,t) =
+  \frac{N}{\sum_{j=1}^{M}{w_j}}\sum_{j=1}^M w_j \referencepower_j(t).
+\end{equation*}
+For the second term in \eqref{eq:probsumdrpower} we write the
+distribution of each component of $\theta$ as conditioned the data
+$\outdr$, $\outreference$, and on the other components.  The simplest
+component is for the Bernoulli parameter
+\begin{equation}
+  \label{eq:bernoulli}
+  \left( \pi | \thetasans{\pi}, \outdr, \outreference \right) \sim
+  \text{Beta} \left( \alpha_\pi + \left| \wvector \right|, \beta_\pi +
+    (M - \right| \wvector \left| \right)
+\end{equation}
+
+The conditional posterior  distribution of the precision is
+\begin{align}
+  &(\tau | \thetasans{\tau}, \outdr, \outreference)  \sim \nonumber \\
+  \label{cond:distributionTau}
+  &\Gamma \left(
+    \alpha+\frac{\left| \context \right| }{2},
+    \beta + \frac{1}{2}\sum_{t\in \context} \left( \sumdrpower(t) -
+      \mu(\wvector, \referencepower, t) \right)^2 \right).
+\end{align}
+
+We calculate the conditional posterior  distribution of $w_i$ in terms
+of intermediate functions
+\begin{equation*}
+  u_j(k) = \prob(\outdr|\thetasans{w_j}, w_j=k, \outreference)
+\end{equation*}
+and find
+\begin{align*}
+  \prob(w_j=1)
+  &= \frac{u_j(1) \pi}{u_j(1)\pi + u_j(0)(1-\pi)} \\
+  &= \frac{1}{1+ \frac{u_j(0)}{u_j(1)}\frac{1-\pi}{\pi}} \\
+  \frac{u_j(0)}{u_j(1)}
+  &= \exp \left( -\frac{\tau}{2} \left( v_j(0) - v_j(1) \right)
+    \right) \text{ where} \\
+  v_j(0) &= \sum_{t\in\eventset} \left(
+           \sumdrpower(t) - \frac{N}{\sum_{k\neq j}w_k} \sum_{k\neq j}
+           w_k \referencepower_k(t) \right)^2 \\
+  v_j(1) &= \sum_{t\in\eventset} \left(
+           \sumdrpower(t) - \frac{N}{1+\sum_{k\neq j}w_k} \left(
+           \referencepower_j(t) + \sum_{k\neq j}
+           w_k \referencepower_k(t) \right) \right)^2
+\end{align*}
 
 
-\subsection{Bayesian modeling}
 In \cite{directestimation}, the authors proposed a sequential
 selection.  In order to test our method, we will consider that $N$
 individuals are affiliated to a demand reduction program. The sum of
@@ -238,9 +361,8 @@ Acyclic Graph (DAG) is given in figure \ref{dag}.
 \label{dag}
 \end{figure}
 
-
-Our aim is to calculate the posterior distribution of the parameter
-vector $\theta^t=(w_1,\dotsc,w_M,\pi,\tau)$ (denoted as
+Our aim is to calculate the a posteriori distribution of the parameter
+vector $\theta^t=(\wvector,\pi,\tau)$ (denoted as
 $p(\theta|Y$). Using this posterior distribution we could make random
 draw of $Y(t)$ under the posterior predictive distribution $\int
 p(Y(t) | \theta) p(\theta| Y)d\theta$ in order to get credibility
@@ -489,6 +611,14 @@ baseline. To provide one, functional data approach could be used under
 certain conditions or some astute methods suggested by \cite{interval}
 could be investigated. However, this is beyond the scope of the paper
 and these issues will be addressed in a future work.
+
+\section*{Acknowledgments}
+
+We thank NEDO (New Energy and Industrial Technology Development
+Organization) and Los Alamos County (particularly Barbara Ricci in
+records and Robert Westervelt in Utilities) for providing the smart
+meter data.
+
 
 \bibliographystyle{IEEEtran}
 \bibliography{IEEEabrv,biblio}
