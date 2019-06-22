@@ -106,7 +106,7 @@ compensation for participating customers.  We refer the interested
 reader to the review of current methods in \cite{directestimation}.
 
 Here, we focus on residential consumption and provide an estimator for
-the sum of baseline consumption of the \emph{DR group}, a set of $N$
+the total baseline consumption of the \emph{DR group}, a set of $N$
 customers who participate in a DR program.  Our baseline estimation
 method requires a database of loads as a function of time for both a
 set of customers (the reference group) who do not participate in the
@@ -144,9 +144,11 @@ procedure, we provide the following list:
   customer $j$ \emph{would have been} had the DR program not been
   deployed.
 \item[$\sumdrpower(t)$] Sum of loads in DR program.  Our goal is to
-  characterize $\left\{ \sumdrpower(t) : t \in \eventset \right\}$ in
-  terms of a Bayesian a posteriori distribution where $\eventset$ is
-  for example the time between 6 PM and 8 PM on a particular day.
+  characterize the baseline,
+  $\sumdrpower_\eventset \equiv \left\{ \sumdrpower(t) : t \in \eventset
+  \right\}$, in terms of a Bayesian a posteriori distribution where
+  $\eventset$ is for example the time between 6 PM and 8 PM on a
+  particular day.
 \item[$\context$] A context set of events with $\context \cap
   \eventset = \emptyset$ used as data.
 \item[$M$] The number of reference customers from which we select a
@@ -175,8 +177,9 @@ procedure, we provide the following list:
   \begin{equation*}
     \pi \sim \text{Beta}(\alpha_\pi, \beta_\pi )
   \end{equation*}
-\item[$\mu$] The mean of the distribution for the baseload given
-  particular values of $\wvector$ and $\inreference$
+\item[$\mu$] The mean of the distribution for the baseline,
+  $\sumdrpower_\eventset$, given particular values of $\wvector$ and
+  $\inreference$
 \item[$\tau = \frac{1}{\sigma^2}$] The precision, where $\sigma^2$ is
   the variance for each event $t$.
 \item[$\alpha, \beta$] Hyper-parameters of the Gamma prior for $\tau$,
@@ -237,7 +240,7 @@ Gaussian
 where
 \begin{equation*}
   \mu(\wvector, \inreference,t) =
-  \frac{N}{\sum_{j=1}^{M}{w_j}}\sum_{j=1}^M w_j \referencepower_j(t).
+  \frac{N}{\left| \wvector \right|}\sum_{j=1}^M w_j \referencepower_j(t).
 \end{equation*}
 For the second term in \eqref{eq:probsumdrpower} we write the
 distribution of each component of $\theta$ as conditioned the data
