@@ -1,0 +1,816 @@
+* detail sur tangle
+tangle 1 fichier :
+se mettre sur un block pour le fichier en question et
+C-u C-u C-c C-v t (oufa)
+
+tangle le bloc
+C-u C-c C-v t 
+
+tangle le buffer
+C-c C-v t 
+* les données
+** import des données et nettoyage
+#+begin_src R :tangle com_load.r
+test <- read.table("../LosAlamosData/cleandata.dta",header=TRUE)
+test <- as.matrix(test)
+###we start now 2nd January OO:OO
+vari <- apply(test,1,var)
+plot(sort(vari),type="h")
+ind0 <- which(vari==0) ##no variation
+ind <- c(ind0,which(vari>1))
+test2 <- test[-ind,]
+###count the number of 0
+nbzero <- function(x){sum(x==0)}
+nb0 <- apply(test2,1,nbzero)
+plot(sort(nb0),type="h")
+ind0 <- which(nb0==0)
+test2 <- test2[ind0,]
+###count the number of 0 of diff
+nbzero <- function(x){sum(diff(x)==0)}
+nb0 <- apply(test2,1,nbzero)
+plot(sort(nb0),type="h")
+ind0 <- which(nb0>1500)
+test2 <- test2[-ind0,]
+###count the number of 0 of diff lag 2 
+nbzero <- function(x){sum(diff(x,lag=2)==0)}
+nb0 <- apply(test2,1,nbzero)
+plot(sort(nb0),type="h")
+ind0 <- which(nb0>1500)
+test2 <- test2[-ind0,]
+
+###########
+n.A <- nrow(test2)
+set.seed(8835)
+# make synthetic data (aggregate)
+# sample
+smp <- sort(sample( 1:n.A, 400 ))
+DR1 <- test2[smp,] ##the test2
+DR2 <- test2[smp,] ##the ones with NA
+IL <- test2[-smp,] ##the data mart
+day <- seq(1,ncol(test2),by=96)
+## we could sample idx <- sample(colnames(test2),10)
+start <- sort(sample(1:ncol(test2),10))
+period <- unlist(lapply(start,FUN=function(x) x:(x+9)))
+DR2[,period] <- 0
+matplot(t(DR2[1:10,1:96]),type="l",lwd=3,lty=1,main="some consumption Januray 2nd",xlab="times",ylab="consumption")
+dd <- 16
+#pdf("exofconsumptioncurves.pdf")
+matplot(t(DR2[1:10,day[dd]:(day[dd]+96)]),type="l",lwd=3,lty=1,main="some consumption Januray 17th",xlab="times",ylab="consumption")
+#dev.off()
+dd <- 2
+matplot(t(DR2[1:10,day[dd]:(day[dd]+96)]),type="l",lwd=3,lty=1,main="some consumption Januray 3rd",xlab="times",ylab="consumption")
+#+end_src
+
+Suite preparation et graphiques
+#+begin_src R :tangle com_load.r
+aggDRsum <- apply(DR2,2,sum)
+aggDRmean <- apply(DR2,2,mean)
+#pdf("baseline.pdf")
+plot(aggDRsum[1:192],type="l",xlab="time",ylab="consumption",main="2nd and 3rd january")
+abline(v=97)
+#dev.off()
+#pdf("baseline.pdf")
+plot(aggDRsum[1:192],type="l",xlab="time",ylab="consumption",main="2nd and 3rd january")
+abline(v=97)
+#dev.off()
+
+#pdf("DR_gp.pdf")
+matplot(t(DR2[1:8,1:192]),type="l",lwd=1,lty=1,main="some consumptions Januray 2nd and 3rd",xlab="times",ylab="consumption",col=2:9)
+lines(aggDRmean[1:192],lwd=4)
+abline(v=97)
+#dev.off()
+
+#pdf("DR_gp.pdf")
+matplot(t(DR2[1:8,1:192]),type="l",lwd=1,lty=1,main="Comsommation et coupure",xlab="temps",ylab="consommation",col=2:9)
+lines(aggDRmean[1:192],lwd=4)
+abline(v=97)
+#dev.off()
+
+###DR period1
+dr1 <- start[1]:(start[1]+9)
+period1 <- 1:(dr1[1]-1)
+estimation1 <- period1[1]:(dr1[10]+10)
+
+## 
+dev.off()
+#+end_src
+
+Les donnees pour la simu
+#+begin_src R :tangle com_load.r
+Y <- aggDRsum[1:156]
+CC <- IL[,1:156]
+TT <- ncol(CC)
+MM <- nrow(CC)
+NN <- nrow(DR1)
+rm(aggDRmean,day,dr1,estimation1,dd,ind,ind0,n.A,nb0,nbzero,period,period1,smp,start,test,test2,vari)
+save.image()
+#+end_src
+** Valeurs hyperparametres
+
+1. Pour \alpha,\beta hyper-paramètres de la loi de \tau
+   (\Gamma(\alpha,\beta)):
+  - la moyenne d'une loi \Gamma(\alpha,\beta) vaut moy=\alpha/\beta et
+    sera choisie egale à la moyenne des 1/varempirique (ici 13).
+  - la variance vaut vari=\alpha/\beta^2=15 d'ou \alpha = moy^2/vari
+    et \beta=moy/vari
+
+2. Pour \alpha_p,\beta_p il represente le nombre de succes -1 et le
+   nombre d'echecs -1 observe a priori (donc pour avoir 25% et un
+   petit a priori, je prends 2 et 4 (ie 1 succes, 3 echec)
+#+begin_src R  :tangle com_load.r
+variance <-  1/sqrt(MM)*apply(CC,2,var)*NN^2
+tauemp <- 1/variance
+moy <- round(mean(tauemp))
+vari <- ceiling(var(tauemp))
+alpha <- round(moy^2/vari,1)
+beta <- round(moy/vari,1)
+alphap <- 2
+betap <- 2
+hyperparam <- c(alpha=alpha,beta=beta,alphap=alphap,betap=betap)
+#+end_src
+
+** Valeurs parametres initiaux et sauvegarde totale de l'image
+#+begin_src R  :tangle com_load.r
+tau0 <- median(tauemp)
+pp0 <- 1/2
+set.seed(468)
+wj0 <- as.integer(rbinom(MM,size=1,prob=pp0))
+paramint <- c(niter=10000,nburn=2000)
+save.image()
+#+end_src
+On est prêt a debugger ! 
+* Avec effectif non contraint
+** programme mcmcbaseline3.cpp
+*** classe mcmcparam
+1. contient n, p (les dimensions) la matrice d'entier wj et 2 vecteurs
+   de parametres tau et pi
+2. overload de () pour extraire par (i,j) dans la matrice
+   s'utilise directement sur la structure (et pas sur la matrice)
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no
+  #include <RcppCommon.h>
+  #include <iostream>
+  #include <cmath>
+  #include <future>
+  #include <vector>
+  using namespace std;
+  using namespace Rcpp;
+  class MCMCparam{
+  public:
+    int n;
+    int p;
+    std::vector<double> tau;
+    std::vector<double> pi;
+    std::vector<int>  wj;
+    MCMCparam(int nn, int pp)
+      :n{nn}, p{pp}, tau(nn,0.0), pi(nn,0.0), wj(nn*pp)
+    { }
+    int& operator()(int i, int j) {
+      return wj[i+j*n];
+    }
+  };
+#+END_SRC
+*** export par wrap de la classe mcmcparam
+Extending wrap: Non-Intrusively
+1. template avant Rcpp.h
+2. fonction pour exporter en data-frame la classe MCMCparam
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no
+  namespace Rcpp {
+    template <> SEXP wrap( const MCMCparam &posterior) ;
+  }
+  #include <Rcpp.h>
+
+  namespace Rcpp {
+    template <> SEXP wrap( const MCMCparam &posterior) {
+      Rcpp::List monres;
+      NumericMatrix wjj(posterior.n, posterior.p);
+      // Fill with value
+      int xsize = wjj.nrow() * wjj.ncol();
+      for (int i = 0; i < xsize; i++) {
+	wjj[i] = posterior.wj[i];
+      }
+      return 
+	Rcpp::wrap(
+          Rcpp::DataFrame::create(
+	    Rcpp::Named("wj")=wjj,
+	    Rcpp::Named("tau")=posterior.tau,
+	    Rcpp::Named("pi")=posterior.pi));
+	};
+      }
+#+END_SRC
+*** parties communes du calcul (un thread ou multi thread)
+**** declarations locales
+#+NAME: declarationslocales
+#+BEGIN_SRC cpp :main no 
+  // variables locales ;
+  int ii, kk, jj, kks, sommewjp;
+  double w0, w1,  sum0, sum1, RSS, probabilite;
+  // parametres de dimension;
+  int NN = paramintt["N"];
+  int mini = paramintt["min"];
+  int nsave = paramintt["nsave"];
+  int nburnin = paramintt["nburnin"]+1;
+  int niter = nsave+nburnin;
+  int TT=ccc.ncol();
+  int MM=ccc.nrow();
+  // vecteurs de calcul;
+  std::vector<int> sommewj(nsave,0);
+  std::vector<double> sumA(TT,0);
+  std::vector<double> sumB(TT,0);
+  std::vector<double> sumC(TT,0);
+  // hyperparametres
+  double alpha = hyperparamm["alpha"];
+  double beta = hyperparamm["beta"];
+  double alphap = hyperparamm["alphap"];
+  double betap = hyperparamm["betap"];
+  // resultat;
+  MCMCparam posterior(nsave,MM);
+#+END_SRC
+**** sous partie sommes et wj, tau pi depart
+#+NAME: lesommes
+#+BEGIN_SRC cpp :main no 
+     for (jj = 0; jj < MM; jj++){
+       posterior(0,jj) = wwj0(jj);
+       sommewj[0] += wwj0(jj);
+       for (ii = 0; ii < TT; ii++){
+	 sumA[ii] +=  posterior(0,jj)*ccc(jj,ii);
+       }
+      }
+
+     posterior.tau[0]=ttau0(0);
+     posterior.pi[0]=ppp0(0);
+     sommewj[0]=max(sommewj[0],mini);
+#+END_SRC
+**** sous partie boucle
+#+NAME: laboucle
+#+BEGIN_SRC cpp :main no 
+    kks=1;
+    sommewjp=sommewj[0];
+    for (kk=1; kk < niter; kk++){
+      for (jj=0; jj < MM; jj++){
+	for (ii = 0; ii < TT; ii++){
+	  sumB[ii] = sumA[ii] - posterior(kks-1,jj)*ccc(jj,ii);
+	  sumC[ii] = sumB[ii] + ccc(jj,ii);
+	}
+	sum0=0.0;
+	sum1=0.0;
+	for (ii = 0; ii < TT; ii++){
+	  sum0 += pow(yyy(ii)-NN*sumB[ii]/(sommewjp - posterior(kks-1,jj)),2);
+	  sum1 += pow(yyy(ii)-NN*sumC[ii]/(sommewjp - posterior(kks-1,jj)+1),2);
+	}
+	w0=-posterior.tau[kks-1]*0.5*sum0;
+	w1=-posterior.tau[kks-1]*0.5*sum1;
+	probabilite = 1/(1+(1-posterior.pi[kks-1])/posterior.pi[kks-1]*exp(w0-w1));
+	if (R::runif(0,1)<probabilite) {
+	  posterior(kks,jj)=1;
+	} else {
+	  posterior(kks,jj)=0;
+	}
+	for (ii = 0; ii < TT; ii++){
+	  sumA[ii] += (posterior(kks,jj) -posterior(kks-1,jj)) * ccc(jj,ii);
+	}
+	sommewjp+=(posterior(kks,jj) -posterior(kks-1,jj));
+	sommewjp=max(sommewjp,mini);
+      }
+      sommewj[kks]=sommewjp;
+      RSS=0.0;
+      for (ii = 0; ii < TT; ii++){
+	RSS += pow(yyy(ii)-NN*sumA[ii]/sommewjp,2);
+      }
+      posterior.pi[kks] = R::rbeta(sommewjp+alphap,MM-sommewjp+betap);
+      posterior.tau[kks] = R::rgamma(alpha+TT/2,1/(beta+0.5*RSS));
+      /* si le compteur arrive au nombre de burnin
+         ou si on depasse la capacite du tableau (nburnin >nsave) 
+         on repart a 0 dans les tableaux de resultats */
+      if (((kks==(nsave-1))&(kk!=(niter-1)))||(kk==nburnin)) {
+	// remise a zero des parametres pour debut
+	posterior.tau[0]=posterior.tau[kks];
+	posterior.pi[0]=posterior.pi[kks];
+	sommewj[0]=sommewj[kks];
+	for (jj = 0; jj < MM; jj++){
+	  posterior(0,jj) = posterior(kks,jj);
+	}
+	// redemarrage
+	kks=1;
+      } else {
+	kks++;   
+      }
+     }
+#+END_SRC
+*** fonction simple sans multithread
+#+BEGIN_SRC cpp :main no :tangle "mcmcbaseline3.cpp" :noweb yes
+  // [[Rcpp::export]]
+  List mcmcbaseline3(IntegerVector paramintt,
+		     NumericMatrix ccc, NumericVector yyy,
+		     NumericVector hyperparamm, 
+		     NumericVector ttau0, 
+		     NumericVector ppp0, 
+		     IntegerVector wwj0) 
+  {
+    // Random generator (from R);
+    RNGScope scope;
+    // declarations;
+    <<declarationslocales>>
+    // les sommes initiales;
+    <<lesommes>>
+    // boucle ;
+    <<laboucle>>
+    return Rcpp::wrap(posterior);
+  }
+#+END_SRC
+
+*** fonction MT
+**** calculs pour la fonction MT
+reprend les parties communes
+#+BEGIN_SRC cpp :main no :tangle "mcmcbaseline3.cpp" :noweb yes
+  MCMCparam mcmcbaseline3mtl(IntegerVector paramintt,
+		     NumericMatrix ccc, NumericVector yyy,
+		     NumericVector hyperparamm, 
+		     NumericVector ttau0, 
+		     NumericVector ppp0, 
+		     IntegerVector wwj0) 
+  {
+    // declarations;
+    <<declarationslocales>>
+    // les sommes initiales;
+    <<lesommes>>
+    // boucle ;
+    <<laboucle>>
+    return posterior;
+  }
+#+END_SRC
+**** depart fonction MT
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no :comment org
+	  //[[Rcpp::export]]
+	    List mcmcbaseline3mt(IntegerVector paramintt,
+				 NumericMatrix ccc, 
+				 NumericVector yyy,
+				 NumericVector hyperparamm, 
+				 NumericVector ttau0, 
+				 NumericVector ppp0, 
+				 IntegerVector wwj0){
+#+END_SRC
+**** init resultat et RNGScope
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no  :comment org
+  RNGScope scope;
+  int nchains=paramintt["nchains"];
+  int MM=ccc.nrow();
+  int nsave = paramintt["nsave"];
+#+END_SRC
+**** taches à faire
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no 
+  std::vector<MCMCparam> resu(nchains,MCMCparam(nsave,MM));
+  std::vector<future<MCMCparam> > tasklist; 
+      for (int t=0; t<nchains; t++)
+	tasklist.push_back( async(launch::async,
+				  mcmcbaseline3mtl,
+				  ref(paramintt), ref(ccc), 
+  ref(yyy), ref(hyperparamm), ref(ttau0), ref(ppp0), ref(wwj0)));
+#+END_SRC
+**** execution des taches
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no 
+  for (int t=0; t<nchains; t++) 
+    resu[t]=tasklist[t].get();
+#+END_SRC
+**** les resultats et le retour
+#+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no 
+  return Rcpp::wrap(resu);
+    }
+#+END_SRC
+
+*** test
+#+begin_src R :results output :session :exports both :comments org
+library(Rcpp)
+
+sourceCpp("mcmcbaseline3.cpp")
+
+resmcmc2 <- mcmcbaseline3(c(nsave=4000,nburnin=3,N=NN,min=0,nchains=3),CC,Y,hyperparam,tau0,pp0,wj0)
+
+#+end_src
+sourceCpp("mcmcbaseline3.cpp")
+
+resmcmc2 <- mcmcbaseline3mt(c(nsave=4000,nburnin=3,N=NN,min=0,nchains=3),CC,Y,hyperparam,tau0,pp0,wj0)
+** analyse des resultats
+*** resultats 1 chaine
+**** premiere longue chaine 
+ #+begin_src R :tangle "convergence_chaine3.r" :results output :session :exports both :comments org
+ library(Rcpp)
+ sourceCpp("mcmcbaseline3.cpp")
+ set.seed(501)
+ resmcmc2 <- mcmcbaseline3(c(nsave=40000,nburnin=500,N=NN,min=0),CC,Y,hyperparam,tau0,pp0,wj0)
+save(resmcmc2,file="RESULTATS/MCMC_modele2_ns40000_nb500_seed_501.rda")
+ #+end_src
+**** coda sur cette longue chaine
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+load("RESULTATS/MCMC_modele2_ns40000_nb500_seed_501.rda")
+# load("RESULTATS/MCMC_modele2_ns40000_nb3000_seed_498.rda")
+   library(coda)
+   rescoda <- mcmc(data.matrix(resmcmc2))
+   res <- rescoda[,c("pi","tau")]
+ #+end_src
+**** Geweke
+Fonction pour le geweke plot (une chaine)
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+    geweke.pac <- function(x, frac1 = 0.1, frac2 = 0.5, nbins = 20, pvalue = 0.05) {
+	ystart <- seq(from = start(x), to = (start(x) + end(x))/2, 
+		      length = nbins)
+	gcd <- matrix(0, length(ystart), nvar(x))
+      colnames(gcd) <- varnames(x)
+	for (n in 1:length(ystart)) {
+	    geweke.out <- geweke.diag(window(x, start = ystart[n]), 
+				      frac1 = frac1, frac2 = frac2)
+	    gcd[n, ] <- geweke.out$z
+	}
+    return(list(ystart=ystart,gcd=gcd))
+    }
+#+end_src
+Mise en forme
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+library(data.table)
+  resu <- geweke.pac(res)
+  don <- cbind.data.frame(ystart=resu$ystart,gcd=resu$gcd)
+ don <- data.table(don)
+  names(don) <- c("ystart","pi","tau")
+  donl <- melt(don,id.vars="ystart")
+names(donl) <- c("ystart","parametre","valeur")
+#+end_src
+
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+     taille <- 8 # taille fonte en points
+     plot <- ggplot(aes(x=ystart,y=valeur,group=parametre),data=donl)+ 
+	 geom_point()+geom_hline(yintercept=c(-2,2),lty=2)+ 
+	 theme(text=element_text(size=taille),
+	       axis.title.x=element_blank(),
+	       axis.title.y=element_blank())+
+	 facet_grid(~parametre, scales = "free",
+		    labeller=label_parsed)
+     pdf("../ARTICLE/geweke_param_tau_pi.pdf",width=9/2.54,height=4/2.54)
+     print(plot)
+     dev.off()
+#+end_src
+**** Tau et pi
+***** preliminaires pour tau et p 
+****** packages
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+ library(ggplot2)
+   library(data.table)
+ #+end_src
+****** tableau pour ggplot
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+   taup <- data.table(cbind.data.frame(res,"sum(w[j])"=rowSums(resmcmc2[,1:MM])))
+   taup[,tps:=1:nrow(taup)]
+   taupl <- melt(taup,id.vars="tps")
+   names(taupl) <- c("tps","parametre","valeur")
+   setkey(taupl,parametre)
+ #+end_src
+
+ ## en lattice  densityplot(res)
+***** graphique des densites
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+   taille <- 8 # taille fonte en points
+   plotgg <- ggplot(aes(x=valeur,group=parametre),data=taupl[c("pi","tau"),])+ 
+       geom_density()+geom_rug()+ 
+       theme(text=element_text(size=taille),
+	     axis.title.x=element_blank(),
+	     axis.title.y=element_blank())+
+       facet_grid(~parametre, scales = "free",
+		  labeller=label_parsed)
+   pdf("../ARTICLE/density_param_tau_pi.pdf",width=9/2.54,height=4/2.54)
+   print(plotgg)
+   dev.off()
+ #+end_src
+***** trajectoires de la chaine
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+   plotgg <- ggplot(aes(x=tps,y=valeur,group=parametre),data=taupl[seq(1,nrow(taupl),by=20)],) + 
+       geom_line() + 
+       geom_smooth(method="loess",col=2) +
+       facet_grid(parametre~., scales = "free",labeller=label_parsed)+
+       theme(text=element_text(size=taille),
+	     axis.title.x=element_blank(),
+	     axis.title.y=element_blank())
+   pdf("../ARTICLE/trajectory_tau_pi_sum.pdf",width=9/2.54,height=4/2.54)
+   print(plotgg)
+   dev.off()
+ #+end_src
+ 
+
+**** temps moyen
+***** fonctions temps moyen et packages
+ Pour chaque courbe on regarde le "temps moyen" ou elle est selectionnee
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+     library(RColorBrewer)
+     library(ggplot2)
+     library(data.table)
+     cummean <- function(x) cumsum(x) / seq_along(x)
+ #+end_src
+***** data-table pour ggplot
+ On passe en data-frame on ajoute la variable tps (de mesure)
+ et on met en format long (renommage des variable de maniere agreable)
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+   dt <- data.table(as.matrix(rescoda[seq(1,length(resmcmc2$tau),by=20),-c(ncol(rescoda)-1,ncol(rescoda))]))
+   dt[,tps:=seq(1,length(resmcmc2$tau),by=20)]
+   dtl <- melt(dt,id.vars="tps")
+   names(dtl) <- c("tps","courbe","etat")
+ rm(dt)
+#+end_src
+ On fait des groupes de 36 = (3* 12 ) [12 couleurs dans une palette ;
+ et 3 type de lty]
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+   dtl[,grp:=(((1:(.N))-1L)%/%36L)+1L,by=.(tps)]
+   dtl[,lty:=(((1:(.N))-1L)%/%12L)+1L,by=.(tps,grp)]
+   dtl[,col:=1:(.N),by=.(tps,grp,lty)]
+ #+end_src
+***** ggplot (tres lent)
+ on calcule le temps moyen et on fait le graphique
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+     dtl[,tpsmoy:=cummean(etat== 1),by=.(courbe)]
+     setkey(dtl,courbe)
+     t <- ggplot(dtl[paste("wj.",c(1:5,1046:1050),sep=""),]) + geom_line(aes(x=tps,y=tpsmoy,group=courbe,col=courbe))+ facet_grid(grp~.)+
+   theme(text=element_text(size=taille),
+	       axis.title.x=element_blank(),
+	       axis.title.y=element_blank(),
+	 strip.background = element_blank(),
+	 strip.text.y = element_blank(),
+ legend.position="none")
+    pdf("../ARTICLE/meantime.pdf",width=9/2.54,height=4/2.54)
+     print(t)
+     dev.off()
+
+ #+end_src
+***** graphiques classiques (rapide)
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+       mypalette <- brewer.pal(12,"Paired")
+       palette(mypalette)
+
+   npargrp <- 12
+ npalette <- 12
+ ceiling(MM/npargrp)  
+   par(mar=c(2,0,0,0),mfrow=c(5,4),bg="grey90",ask=TRUE)
+   for (i in 1:ceiling(MM/npargrp)) {
+     selecti <- (((i-1)*npargrp+1):(i*npargrp))[(((i-1)*npargrp+1):(i*npargrp))<=MM]
+     matplot(apply(rescoda[,selecti],2,FUN=function(x) cummean(x== 1)), type="l", lty=rep((1:ceiling(npargrp/npalette))+1,each=npalette),bg="grey20",ylab="",xaxt="n",yaxt="n")
+     text(x=6000,y=0.9,label=paste(range(selecti),collapse="-"))
+ }
+ #+end_src
+
+*** resultats plusieurs chaines
+**** les chaines 
+ #+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+   library(Rcpp)
+# source("com_load.r")
+   sourceCpp("mcmcbaseline3.cpp")
+   for (i in 501:515) {
+       set.seed(i)
+       tau0 <- sample(tauemp,1)
+       pp0 <- 1/2
+       wj0 <- as.integer(rbinom(MM,size=1,prob=pp0))
+       resmcmc2 <- mcmcbaseline3(c(nsave=40000,nburnin=500,N=NN,min=0),CC,Y,hyperparam,tau0,pp0,wj0)
+       save(resmcmc2,file=paste("RESULTATS/MCMC_modele2_ns40000_nb500_seed_",i,".rda",sep=""))
+   }
+ #+end_src
+**** conversion en coda
+conversion de tous les parametres et conversion de tau, pi et sum
+: 2 objets coda: rescoda et rescodab
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+    library(coda) 
+   lesseeds <- 501:515
+    for (i in lesseeds) { 
+	print(i)
+	load(file=paste("RESULTATS/MCMC_modele2_ns40000_nb500_seed_",i,".rda",sep=""))
+	prov <- data.matrix(resmcmc2)
+      provb <- cbind(resmcmc2$tau,resmcmc2$pi,rowSums(resmcmc2[,1:MM]))
+colnames(provb) <- c("sum(w[j])","pi","tau")
+	colnames(prov) <- c(paste("w[",1:MM,"]",sep=""),"pi","tau")
+	eval(parse(text=paste("res",i," <- as.mcmc(prov)",sep="")))
+	eval(parse(text=paste("resb",i," <- as.mcmc(provb)",sep="")))
+    }
+
+      eval(parse(text=paste("rescoda <- mcmc.list(",paste("res",lesseeds,sep="",collapse=","),")")))
+  eval(parse(text=paste("rm(",paste("res",lesseeds,sep="",collapse=","),")")))
+      eval(parse(text=paste("rescodab <- mcmc.list(",paste("resb",lesseeds,sep="",collapse=","),")")))
+  eval(parse(text=paste("rm(",paste("resb",lesseeds,sep="",collapse=","),")")))
+ #+end_src
+**** Gelman
+Fonction pour le gelman plot
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+    gelman.pac <- function(x, bin.width = 10, max.bins = 50, confidence = 0.95,transform = FALSE, autoburnin = TRUE) {       
+    if (niter(x) <= 50) 
+    stop("Less than 50 iterations in chain")
+    nbin <- min(floor((niter(x) - 50)/thin(x)), max.bins)
+    binw <- floor((niter(x) - 50)/nbin)
+    last.iter <- c(seq(from = start(x) + 50 * thin(x), by = binw * 
+        thin(x), length = nbin), end(x))
+    shrink <- array(dim = c(nbin + 1, nvar(x), 2))
+    dimnames(shrink) <- list(last.iter, varnames(x), c("median", 
+        paste(50 * (confidence + 1), "%", sep = "")))
+    for (i in 1:(nbin + 1)) {
+        shrink[i, , ] <- gelman.diag(window(x, end = last.iter[i]), 
+            confidence = confidence, transform = transform, autoburnin = autoburnin, 
+            multivariate = FALSE)$psrf
+    }
+    all.na <- apply(is.na(shrink[, , 1, drop = FALSE]), 2, all)
+    if (any(all.na)) {
+        cat("\n******* Error: *******\n")
+        cat("Cannot compute Gelman & Rubin's diagnostic for any chain \n")
+        cat("segments for variables", varnames(x)[all.na], "\n")
+        cat("This indicates convergence failure\n")
+    }
+    return(list(shrink = shrink, last.iter = last.iter))
+}
+#+end_src
+Mise en forme via data-table
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+library(data.table)
+  resu <- gelman.pac(rescodab)
+  don <- cbind.data.frame(lastiter=resu$last.iter,shrink=resu$shrink)
+ don <- data.table(don)
+  names(don) <- c("ystart","pi","tau")
+  donl <- melt(don,id.vars="lastiter",measure = list(c("shrink.sum(w[j]).median","shrink.pi.median","shrink.tau.median"),c("shrink.sum(w[j]).97.5%","shrink.pi.97.5%","shrink.tau.97.5%")))
+names(donl) <- c("lastiter","parametre","median","quant975")
+setattr(donl$parametre,"levels",c("sum(w[j])","pi","tau"))
+#+end_src
+Et le graphique via ggplot
+#+begin_src R :tangle convergence_chaine3.r :results output :session :exports both :comments org
+  taille <- 8 # taille fonte en points
+mypalette <- brewer.pal(2,"Set1")
+palette(mypalette)
+  ggplot <- ggplot(data=donl)+
+geom_line(aes(x=lastiter,y=median,group=parametre),col=2)+ 
+geom_line(aes(x=lastiter,y=quant975,group=parametre),col=1,lty=2)+ 
+      theme(text=element_text(size=taille),
+	    axis.title.x=element_blank(),
+	    axis.title.y=element_blank())+
+      facet_grid(~parametre, scales = "free",
+		 labeller=label_parsed)
+  pdf("../ARTICLE/gelman_param_sum_tau_pi.pdf",width=9/2.54,height=4/2.54)
+  print(ggplot)
+  dev.off()
+#+end_src
+*** IC 
+**** fonctions cpp IC pour Y et mu version 3
+ #+BEGIN_SRC cpp :tangle "mcmcbaseline3.cpp" :main no
+   //[[Rcpp::export]]
+   List ICYbaseline3(NumericMatrix ccc, IntegerMatrix wj, NumericVector tau, int NN) {
+     RNGScope scope;
+     int TT=ccc.ncol();
+     int MM=ccc.nrow();
+     int KK=wj.nrow();
+     int sommewjk;
+     NumericMatrix sumA(KK,TT);
+     NumericMatrix Yp(KK,TT);
+     List res;
+     // pour chaque param simule de la posterior
+     for (int k = 0; k < KK; k++){
+       sommewjk=0;
+       // calcul de la moyenne
+       for (int ii = 0; ii < TT; ii++){
+	 for (int jj = 0; jj < MM; jj++){
+	   sumA(k,ii) +=  wj(k,jj)*ccc(jj,ii);
+	   if (ii==0) sommewjk += wj(k,jj) ;
+	 }
+	 sumA(k,ii) = NN*sumA(k,ii)/sommewjk;
+	 // random draw from posterior predictive
+	 Yp(k,ii)=R::rnorm(sumA(k,ii),1/std::sqrt(tau(k)));
+       }
+     }
+     res["mu"]=sumA;
+     res["Y"]=Yp;
+     return res;
+   }
+ #+END_SRC
+**** Calculs de l'IC
+ #+begin_src R :tangle IC3.R :results output :session :exports both :comments org
+   library(Rcpp)
+   sourceCpp("mcmcbaseline3.cpp")
+   selecti2 <- seq(1,nrow(resmcmc2),by=20)
+   selecti2 <- selecti2[selecti2>20000]
+   length(selecti2)
+   ICY <- ICYbaseline3(IL[,1:192],data.matrix(resmcmc2[selecti2,1:MM]),resmcmc2$tau[selecti2],NN)
+ #+end_src
+**** IC via Y avec ggplot 
+ #+begin_src R :tangle IC3.R :results output :session :exports both :comments org
+   library(RColorBrewer)
+   mypalette <- brewer.pal(12,"Paired")
+   palette(mypalette)
+   library(data.table)
+   library(ggplot2)
+   dtY2 <- data.table(t(ICY$mu))
+   dtY2[,tps:=1:nrow(dtY2)]
+   dtY2l <- melt(dtY2,id.vars="tps")
+   names(dtY2l) <- c("tps","courbe","load")
+   don <- dtY2l[,.(ICinf=quantile(load,probs=0.025),ICsup=quantile(load,probs=0.975)),by=.(tps)]
+   ajout <- data.frame(tps=1:nrow(dtY2),true=apply(DR1,2,sum)[1:192],mean=apply(ICY$Y,2,median))
+   plotgg <- ggplot()+
+       geom_line(aes(x=tps,y=load,group=courbe),data=dtY2l,alpha=0.2)+
+       geom_line(aes(x=tps,y=true),data=ajout,col="red")+ 
+       geom_ribbon(aes(x=tps,ymin=ICinf,ymax=ICsup),data=don,alpha=0.2,col=2)+
+       geom_line(aes(x=tps,y=mean),col=3,data=ajout)+
+       geom_vline(xintercept=157) +     
+       theme(text=element_text(size=taille),
+	     axis.title.x=element_blank(),
+	     axis.title.y=element_blank())
+
+
+   pdf("../ARTICLE/ICY.pdf",width=10/2.54,height=5/2.54)
+   print(plotgg)
+   dev.off()
+ #+end_src
+**** Coverage of IC
+#+begin_src R  :tangle IC3.R :results output :session :exports both :comments org
+don[,true:=apply(DR1,2,sum)[1:192]]
+don[,withinIC:=(true<ICsup)&(true>ICinf)]
+don[,sum(withinIC)]
+## coverage
+don[-(1:156),sum(withinIC)]
+## total of prediction to be done
+length((1:192)[-(1:156)])
+#+end_src
+**** MAP et MSE
+#+begin_src R :tangle IC3.R :results output :session :exports both :comments org
+restot <- matrix(0,2,4) 
+restot[2,1] <- mean(abs(apply(DR1,2,sum)[1:192]-colMeans(ICY$Y)))
+restot[1,1] <- mean(abs(apply(DR1,2,sum)[1:192]-colMeans(ICY$Y))[-(1:156)])
+
+restot[2,2] <- mean((apply(DR1,2,sum)[1:192]-colMeans(ICY$mu))^2)
+restot[1,2] <- mean(((apply(DR1,2,sum)[1:192]-colMeans(ICY$mu))[-(1:156)])^2)
+
+ ## posterior median 
+restot[2,3] <- mean(abs(apply(DR1,2,sum)[1:192]-apply(ICY$mu,2,median)))
+restot[1,3] <- mean(abs(apply(DR1,2,sum)[1:192]-apply(ICY$mu,2,median))[-(1:156)])
+
+restot[2,4] <- mean((apply(DR1,2,sum)[1:192]-apply(ICY$mu,2,median))^2)
+restot[1,4] <- mean(((apply(DR1,2,sum)[1:192]-apply(ICY$mu,2,median))[-(1:156)])^2)
+
+colnames(restot) <- c("MAP","MSE","MAP","MSE")
+rownames(restot) <- c("prediction","all")
+round(restot,2)
+ ## posterior mode (well well)
+#+end_src
+*** early stopping
+**** tirages
+#+begin_src R :tangle IC3.R :results output :session :exports both :comments org
+    library(Rcpp)
+    sourceCpp("mcmcbaseline3.cpp")
+    myend <- seq(300,40000,by=100)
+    coverage <- rep(0,length(myend))
+    restot <- matrix(0,length(myend),4)
+    ## Posterior predictive
+    set.seed(98)
+    ICY <- ICYbaseline3(IL[,1:192],data.matrix(resmcmc2[,1:MM]),resmcmc2$tau,NN)
+  ## Different selection
+  iter <- 1
+  for (i in myend) {
+      selecti2 <- 1:40000
+      if (i>600) {
+	  selecti2 <- selecti2[(selecti2<=i)&(selecti2>i/2)]
+      } else {
+	  selecti2 <- selecti2[selecti2<=i]
+      }
+      dtY2 <- data.table(t(ICY$Y[selecti2,]))
+      dtY2[,tps:=1:nrow(dtY2)]
+      dtY2l <- melt(dtY2,id.vars="tps")
+      names(dtY2l) <- c("tps","courbe","load")
+      don <- dtY2l[,.(ICinf=quantile(load,probs=0.025),ICsup=quantile(load,probs=0.975)),by=.(tps)]
+      don[,true:=apply(DR1,2,sum)[1:192]]
+      don[,withinIC:=(true<ICsup)&(true>ICinf)]
+      ## coverage
+      coverage[iter] <- don[-(1:156),sum(withinIC)]/length((1:192)[-(1:156)])
+      ## MAP + MSE
+      restot[iter,1] <- mean(abs(apply(DR1,2,sum)[1:192]-colMeans(ICY$Y[selecti2,]))[-(1:156)])
+      restot[iter,2] <- mean(((apply(DR1,2,sum)[1:192]-colMeans(ICY$Y[selecti2,]))[-(1:156)])^2)
+      restot[iter,3] <- mean(abs(apply(DR1,2,sum)[1:192]-apply(ICY$Y[selecti2,],2,median))[-(1:156)])
+      restot[iter,4] <- mean(((apply(DR1,2,sum)[1:192]-apply(ICY$Y[selecti2,],2,median))[-(1:156)])^2)
+      ## MAJ
+      iter <- iter+1
+      if (iter%%100==0) print(iter)
+  }
+#+end_src
+**** graphiques
+#+begin_src R :tangle IC3.R :results output :session :exports both :comments org
+     library(ggplot2)
+    library(RColorBrewer)
+    mypalette <- brewer.pal(12,"Paired")
+    palette(mypalette)
+     colnames(restot) <- c("meanMAP","meanMSE","medianMAP","medianMSE")
+     restot <- cbind.data.frame(restot,coverage=coverage,stoppingtime=myend)
+     restot <- data.table(restot)
+     restotl <- melt(restot,id.vars="stoppingtime",measure = list(c("meanMAP","medianMAP","coverage"),c("meanMSE","medianMSE","coverage")))
+    names(restotl)[2] <- "type"
+    names(restotl)[3] <- "MAP"
+    names(restotl)[4] <- "MSE"
+  setkey(restotl,type)
+  levels(restotl$type) <- c("mean","median","coverage")
+  restotl[,new:=factor(type=="coverage")]
+  levels(restotl$new) <- c("MAP","coverage")
+  plotgg <- ggplot(data=restotl)+ 
+      geom_line(aes(x=stoppingtime,y=MAP,col=type,group=type))+
+      facet_grid(new~., scales = "free")+
+      theme(text=element_text(size=taille),
+	    axis.title.x=element_blank(),
+	    axis.title.y=element_blank())+
+	 geom_hline(aes(yintercept=y),
+		    data=data.frame(new=c("MAP","coverage"),
+				    y=c(NA,0.95)),lty=2)
+     pdf("../ARTICLE/selection_kstar.pdf",width=9/2.54,height=4/2.54)
+     print(plotgg)
+     dev.off()
+#+end_src
