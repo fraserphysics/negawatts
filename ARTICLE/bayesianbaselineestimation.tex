@@ -97,7 +97,7 @@ were really constantly optimizing the objective functions of
 theoretical economics, some have argued\cite{meyn} that actual
 customers focus more on things like being able to take a hot shower
 when it's convenient.  Thus, we are interested in \emph{demand
-  response} techniques for selectively curtailing loads like HVAC
+  response} (DR) techniques for selectively curtailing loads like HVAC
 systems and water heaters.  Here we present a technique for estimating
 in retrospect how much power participants would have used had the DR
 program not been deployed.  That amount of power is called the
@@ -106,7 +106,7 @@ compensation for participating customers.  We refer the interested
 reader to the review of current methods in \cite{directestimation}.
 
 Here, we focus on residential consumption and provide an estimator for
-the sum of baseline consumption of the \emph{DR group}, a set of $N$
+the total baseline consumption of the \emph{DR group}, a set of $N$
 customers who participate in a DR program.  Our baseline estimation
 method requires a database of loads as a function of time for both a
 set of customers (the reference group) who do not participate in the
@@ -140,13 +140,15 @@ procedure, we provide the following list:
 \item[$\left| \eventset \right|$] The number of sample times in an
   event set
 \item[$\drpower_j(t)$] The load of customer $j$ in the DR program at
-  time $t$.  If $t\in \eventset$, $\drpower_j(t)$ is what the load
+  time $t$.  If $t\in \eventset$, $\drpower_j(t)$ is what the load of
   customer $j$ \emph{would have been} had the DR program not been
   deployed.
 \item[$\sumdrpower(t)$] Sum of loads in DR program.  Our goal is to
-  characterize $\left\{ \sumdrpower(t) : t \in \eventset \right\}$ in
-  terms of a Bayesian a posteriori distribution where $\eventset$ is
-  for example the time between 6 PM and 8 PM on a particular day.
+  characterize the baseline,
+  $\sumdrpower_\eventset \equiv \left\{ \sumdrpower(t) : t \in \eventset
+  \right\}$, in terms of a Bayesian a posteriori distribution where
+  $\eventset$ is for example the time between 6 PM and 8 PM on a
+  particular day.
 \item[$\context$] A context set of events with $\context \cap
   \eventset = \emptyset$ used as data.
 \item[$M$] The number of reference customers from which we select a
@@ -175,11 +177,12 @@ procedure, we provide the following list:
   \begin{equation*}
     \pi \sim \text{Beta}(\alpha_\pi, \beta_\pi )
   \end{equation*}
-\item[$\mu$] The mean of the distribution for the baseload given
-  particular values of $\wvector$ and $\inreference$
+\item[$\mu$] The mean of the distribution for the baseline,
+  $\sumdrpower_\eventset$, given particular values of $\wvector$ and
+  $\inreference$
 \item[$\tau = \frac{1}{\sigma^2}$] The precision, where $\sigma^2$ is
-  the variance for each event $t$.
-\item[$\alpha, \beta$] Hyper-parameters of the Gamma prior for $\tau$,
+  the variance for each event $t$
+\item[$\alpha, \beta$] Hyperparameters of the Gamma prior for $\tau$,
   ie,
   \begin{equation*}
     \tau \sim \Gamma(\alpha, \beta)
@@ -189,29 +192,49 @@ procedure, we provide the following list:
     \theta \equiv \left(\wvector, \pi, \tau \right)
   \end{equation*}
 \item[$\thetasans{\gamma}$] The entire parameter vector $\theta$
-  except one component (the component $\gamma$ as written here).
+  except one component (the component $\gamma$ as written here)
 \end{description}
 
 \subsection{Independence Assumptions}
 \label{sec:Independence}
 
-We characterize the baseline in terms of probability with
+We characterize the baseline, $\sumdrpower$, in terms of the conditional
+probability
 \begin{align*}
   &\prob(\sumdrpower|\inreference, \outdr, \outreference) \\
   &= \int \prob \left( \sumdrpower, \theta |\inreference, \outdr,
     \outreference \right) d\theta \\
   &= \int \prob \left( \sumdrpower | \theta, \inreference, \outdr,
     \outreference \right) \prob \left( \theta| \inreference, \outdr,
-    \outreference \right) d\theta.
+    \outreference \right) d\theta,
 \end{align*}
-Assuming
-\begin{itemize}
+where $\inreference$, $\outdr$, and $\outreference$ are observed data.
+We assume:
+\begin{enumerate}
 \item $\sumdrpower$ is independent of $\outdr$ and $\outreference$ given
-  $\theta$ and $\inreference$
+  $\theta$ and $\inreference$:
+  \begin{equation}
+    \label{eq:independenceA}
+    \prob(\sumdrpower, \outdr, \outreference | \theta, \inreference) =
+    \prob(\sumdrpower | \theta, \inreference) \cdot
+    \prob(\outdr, \outreference | \theta, \inreference)
+  \end{equation}
 \item $\theta$ is independent of $\inreference$ given $\outreference$
-  and $\outdr$,
-\end{itemize}
-we write
+  and $\outdr$:
+  \begin{equation}
+    \label{eq:independenceB}
+    \prob(\theta, \inreference| \outreference, \outdr) =
+    \prob(\theta, | \outreference, \outdr) \cdot
+    \prob(\inreference| \outreference, \outdr)
+  \end{equation}
+\item $\outreference$ is independent of $\theta$:
+  \begin{equation}
+    \label{eq:indepencenceC}
+    \prob(\outreference, \theta) = \prob(\outreference) \prob(\theta)
+  \end{equation}
+
+\end{enumerate}
+The first two of these assumptions imply that
 \begin{equation}
   \label{eq:probsumdrpower}
   \prob(\sumdrpower|\inreference, \outdr, \outreference) = \int \prob \left(
@@ -227,7 +250,7 @@ sampling.
 \subsection{Models}
 \label{sec:models}
 
-Given $\theta$ and the reference data $\inreference$, we model the
+Given $\theta$ and the reference data, $\inreference$, we model the
 first term on the right hand side of \eqref{eq:probsumdrpower} as a
 Gaussian
 \begin{equation*}
@@ -237,22 +260,30 @@ Gaussian
 where
 \begin{equation*}
   \mu(\wvector, \inreference,t) =
-  \frac{N}{\sum_{j=1}^{M}{w_j}}\sum_{j=1}^M w_j \referencepower_j(t).
+  \frac{N}{\left| \wvector \right|}\sum_{j=1}^M w_j \referencepower_j(t).
 \end{equation*}
 For the second term in \eqref{eq:probsumdrpower} we write the
 distribution of each component of $\theta$ as conditioned the data
-$\outdr$, $\outreference$, and on the other components.  The simplest
-component is for the Bernoulli parameter
+$\outdr$, $\outreference$, and on the other components.
+
+\subsubsection{The Bernoulli parameter $\pi$}
+\label{sec:bernoulli}
+
+The expression for the conditional distribution of this component of
+$\theta$ is
 \begin{equation}
   \label{eq:bernoulli}
-  \left( \pi | \thetasans{\pi}, \outdr, \outreference \right) \sim
+  \pi | \thetasans{\pi}, \outdr, \outreference \sim
   \text{Beta} \left( \alpha_\pi + \left| \wvector \right|, \beta_\pi +
     (M - \right| \wvector \left| \right)
 \end{equation}
 
-The conditional posterior  distribution of the precision is
+\subsubsection{The precision $\tau$}
+\label{sec:precision}
+
+The conditional distribution of the precision is
 \begin{align}
-  &(\tau | \thetasans{\tau}, \outdr, \outreference)  \sim \nonumber \\
+  &\tau | \thetasans{\tau}, \outdr, \outreference  \sim \nonumber \\
   \label{cond:distributionTau}
   &\Gamma \left(
     \alpha+\frac{\left| \context \right| }{2},
@@ -260,27 +291,61 @@ The conditional posterior  distribution of the precision is
       \mu(\wvector, \referencepower, t) \right)^2 \right).
 \end{align}
 
-We calculate the conditional posterior  distribution of $w_i$ in terms
-of intermediate functions
-\begin{equation*}
-  u_j(k) = \prob(\outdr|\thetasans{w_j}, w_j=k, \outreference)
-\end{equation*}
-and find
+\subsubsection{The control group indicator variables}
+\label{sec:w_i}
+
+We start with
+\begin{align}
+  & \prob(w_j|\thetasans{w_j}, \outdr, \outreference) = \nonumber \\
+  \label{eq:probwj}
+  & \frac{\prob(w_j, \thetasans{w_j}, \outdr, \outreference)}
+  {\sum_{w_i\in \{0,1\}}\prob(w_i, \thetasans{w_i}, \outdr, \outreference)},
+\end{align}
+and note
 \begin{align*}
-  \prob(w_j=1)
-  &= \frac{u_j(1) \pi}{u_j(1)\pi + u_j(0)(1-\pi)} \\
-  &= \frac{1}{1+ \frac{u_j(0)}{u_j(1)}\frac{1-\pi}{\pi}} \\
-  \frac{u_j(0)}{u_j(1)}
-  &= \exp \left( -\frac{\tau}{2} \left( v_j(0) - v_j(1) \right)
-    \right) \text{ where} \\
-  v_j(0) &= \sum_{t\in\eventset} \left(
-           \sumdrpower(t) - \frac{N}{\sum_{k\neq j}w_k} \sum_{k\neq j}
-           w_k \referencepower_k(t) \right)^2 \\
-  v_j(1) &= \sum_{t\in\eventset} \left(
-           \sumdrpower(t) - \frac{N}{1+\sum_{k\neq j}w_k} \left(
-           \referencepower_j(t) + \sum_{k\neq j}
-           w_k \referencepower_k(t) \right) \right)^2
+  & \prob(w_j, \thetasans{w_j}, \outdr, \outreference) = \\
+  & \prob(\outdr | w_j, \thetasans{w_j}, \outreference) \cdot
+  \prob(\outreference |w_j, \thetasans{w_j}) \cdot
+    \prob(w_j, \thetasans{w_j}) = \\
+  & \prob(\outdr | w_j, \thetasans{w_j}, \outreference) \cdot
+  \prob(\outreference) \cdot \prob(w_j|\thetasans{w_j}) \cdot
+    \prob(\thetasans{w_j})
 \end{align*}
+Since
+\begin{equation*}
+  \prob(w_j | \thetasans{w_j} =
+  \begin{cases}
+    \pi \text{ if } w_j = 1\\
+    (1-\pi) \text{ if } w_j = 0,
+  \end{cases}
+\end{equation*}
+if we define the intermediate functions
+\begin{equation*}
+  u_j(k) = \prob(\outdr|\thetasans{w_j}, w_j=k, \outreference),
+\end{equation*}
+we can use them to write
+\begin{align*}
+  \prob(w_j=1|\thetasans{w_j}, \outdr, \outreference))
+  &= \frac{u_j(1) \pi}{u_j(1)\pi + u_j(0)(1-\pi)} \\
+  &= \frac{1}{1+ \frac{u_j(0)}{u_j(1)}\frac{1-\pi}{\pi}}.
+\end{align*}
+Then, introducing yet two more intermediate functions
+\begin{align*}
+  v_j(0) &= \sum_{t\in\eventset} \left(
+           \sumdrpower(t) - \frac{N}{\sum_{i\neq j}w_i} \sum_{k\neq j}
+           w_i \referencepower_i(t) \right)^2 \\
+  v_j(1) &= \sum_{t\in\eventset} \left(
+           \sumdrpower(t) - \frac{N}{1+\sum_{k\neq j}w_i} \left(
+           \referencepower_j(t) + \sum_{k\neq j}
+           w_i \referencepower_i(t) \right) \right)^2,
+\end{align*}
+we can write
+\begin{equation*}
+  \frac{u_j(0)}{u_j(1)}
+  = \exp \left( -\frac{\tau}{2} \left( v_j(0) - v_j(1) \right)
+    \right).
+\end{equation*}
+
 
 
 In \cite{directestimation}, the authors proposed a sequential
