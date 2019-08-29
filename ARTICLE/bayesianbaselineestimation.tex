@@ -550,8 +550,8 @@ stabilization of the probability of selection if the stationary
 distribution is reached. In order to monitor the convergence with the
 Gelman shrink factor, we ran 15 parallel chains.  With these
 diagnostics plot we can retain a starting number of iterations
-$k^\star$ and applying a thinning number of 20 to ensure better
-independency between successive draws of the same chain. Thanks to C++
+$k^\star$ and applying a thinning number of 20 to reduce dependence
+between successive draws of the same chain. Thanks to C++
 multi-threading, running one chain or several are pretty fast,
 allowing us to be very conservative in our monitoring procedure.
 
@@ -586,7 +586,7 @@ plot (not shown).
   \caption{Mean time in state ``curve $j$ in control group'' for selected $j$}
   \label{fig:meantime}
 \end{figure}
-Of course a more agressive starting time $k^\star$   can be selected
+Of course a more aggressive starting time $k^\star$   can be selected
 
 
 Using random draws from $k^\star$ up to 40000 and a thinning factor of

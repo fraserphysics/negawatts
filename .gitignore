@@ -1,0 +1,4 @@
+*.aux
+*.log
+/ARTICLE/bayesianbaselineestimation.pdf
+/ARTICLE/bayesianbaselineestimation.out

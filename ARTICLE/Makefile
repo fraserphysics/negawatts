@@ -7,12 +7,24 @@ PDFFIGS = $(addsuffix .pdf, ${FIGURES})
 TARGET = bayesianbaselineestimation
 ${TARGET}.pdf : ${TARGET}.tex ${PDFFIGS}
 	pdflatex ${TARGET}
+	pdflatex ${TARGET}
 
+bayesianbaselineestimation.aux: bayesianbaselineestimation.tex
+	pdflatex $<
+## bib           : Phony target to remake bibliography
+.PHONY : bib
+bib: bayesianbaselineestimation.aux
+	bibtex $<
+	touch ${TARGET}.tex
 ## variables     : Print selected variables.
 .PHONY : variables
-variables:
+variables :
 	@echo FIGURES : ${FIGURES}
 	@echo PDFFIGS : ${PDFFIGS}
+
+.PHONY : clean
+clean:
+	rm -f *.aux *.bbl *.blg *.log *.out bayesianbaselineestimation.pdf
 
 .PHONY : help
 help : Makefile
